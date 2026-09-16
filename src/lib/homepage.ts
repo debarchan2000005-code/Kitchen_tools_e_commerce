@@ -1,7 +1,4 @@
 import { supabase } from './supabase';
-import type { SupabaseClient } from '@supabase/supabase-js';
-
-type HomepageDbClient = SupabaseClient;
 
 export interface HomepageSection {
   id: string;
@@ -40,7 +37,7 @@ export interface HomepageProductPick {
   is_enabled: boolean;
 }
 
-export async function getHomepageSections(client: HomepageDbClient = supabase): Promise<HomepageSection[]> {
+export async function getHomepageSections(client = supabase): Promise<HomepageSection[]> {
   const { data, error } = await client
     .from('homepage_sections')
     .select('*')
@@ -53,7 +50,7 @@ export async function getHomepageSections(client: HomepageDbClient = supabase): 
 export async function updateHomepageSection(
   section_key: string,
   patch: Partial<Omit<HomepageSection, 'id' | 'section_key'>>,
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
   const { error } = await client
     .from('homepage_sections')
@@ -68,8 +65,19 @@ export async function updateHomepageSection(
 
 export async function reorderSections(
   order: { section_key: string; display_order: number }[],
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
+  // Use temporary unique values first so reordering also works if
+  // display_order has a unique constraint.
+  for (let index = 0; index < order.length; index++) {
+    const { error } = await client
+      .from('homepage_sections')
+      .update({ display_order: 100000 + index })
+      .eq('section_key', order[index].section_key);
+
+    if (error) throw error;
+  }
+
   for (const { section_key, display_order } of order) {
     const { error } = await client
       .from('homepage_sections')
@@ -80,7 +88,7 @@ export async function reorderSections(
   }
 }
 
-export async function getHomepageFeatures(client: HomepageDbClient = supabase): Promise<HomepageFeature[]> {
+export async function getHomepageFeatures(client = supabase): Promise<HomepageFeature[]> {
   const { data, error } = await client
     .from('homepage_features')
     .select('*')
@@ -92,7 +100,7 @@ export async function getHomepageFeatures(client: HomepageDbClient = supabase): 
 
 export async function upsertHomepageFeature(
   feature: Partial<HomepageFeature> & { id?: string },
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
   const { error } = await client
     .from('homepage_features')
@@ -101,7 +109,7 @@ export async function upsertHomepageFeature(
   if (error) throw error;
 }
 
-export async function deleteHomepageFeature(id: string, client: HomepageDbClient = supabase) {
+export async function deleteHomepageFeature(id: string, client = supabase) {
   const { error } = await client
     .from('homepage_features')
     .delete()
@@ -110,7 +118,7 @@ export async function deleteHomepageFeature(id: string, client: HomepageDbClient
   if (error) throw error;
 }
 
-export async function getHomepageCategoryPicks(client: HomepageDbClient = supabase): Promise<HomepageCategoryPick[]> {
+export async function getHomepageCategoryPicks(client = supabase): Promise<HomepageCategoryPick[]> {
   const { data, error } = await client
     .from('homepage_categories')
     .select('*')
@@ -122,7 +130,7 @@ export async function getHomepageCategoryPicks(client: HomepageDbClient = supaba
 
 export async function setHomepageCategoryPicks(
   picks: Partial<HomepageCategoryPick>[],
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
   const { error } = await client
     .from('homepage_categories')
@@ -131,7 +139,7 @@ export async function setHomepageCategoryPicks(
   if (error) throw error;
 }
 
-export async function removeHomepageCategoryPick(category_id: string, client: HomepageDbClient = supabase) {
+export async function removeHomepageCategoryPick(category_id: string, client = supabase) {
   const { error } = await client
     .from('homepage_categories')
     .delete()
@@ -142,7 +150,7 @@ export async function removeHomepageCategoryPick(category_id: string, client: Ho
 
 export async function getHomepageProductPicks(
   section_key: 'featured_products' | 'best_sellers',
-  client: HomepageDbClient = supabase
+  client = supabase
 ): Promise<HomepageProductPick[]> {
   const { data, error } = await client
     .from('homepage_products')
@@ -156,7 +164,7 @@ export async function getHomepageProductPicks(
 
 export async function setHomepageProductPicks(
   picks: Partial<HomepageProductPick>[],
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
   const { error } = await client
     .from('homepage_products')
@@ -170,7 +178,7 @@ export async function setHomepageProductPicks(
 export async function removeHomepageProductPick(
   product_id: string,
   section_key: string,
-  client: HomepageDbClient = supabase
+  client = supabase
 ) {
   const { error } = await client
     .from('homepage_products')
@@ -184,12 +192,12 @@ export async function removeHomepageProductPick(
 export async function uploadHomepageImage(
   file: File,
   prefix: string,
-  client: HomepageDbClient = supabase
+  client = supabase
 ): Promise<string> {
   const ext = file.name.split('.').pop();
   const path = `${prefix}-${Date.now()}.${ext}`;
 
-  const { error } = await client.storage
+  const { error } = await supabase.storage
     .from('homepage-images')
     .upload(path, file, {
       upsert: true,

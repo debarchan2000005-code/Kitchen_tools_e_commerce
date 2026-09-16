@@ -137,27 +137,19 @@ export function HomepagePage() {
   async function moveSection(key: string, dir: 'up' | 'down') {
     const ordered = [...sections].sort((a, b) => a.display_order - b.display_order);
     const idx = ordered.findIndex((s) => s.section_key === key);
-    const target = dir === 'up' ? idx - 1 : idx + 1;
-    if (idx < 0 || target < 0 || target >= ordered.length) return;
-
-    const next = [...ordered];
-    [next[idx], next[target]] = [next[target], next[idx]];
-    const newOrder = next.map((s, index) => ({
+    const swapWith = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapWith < 0 || swapWith >= ordered.length) return;
+    const reordered = [...ordered];
+    [reordered[idx], reordered[swapWith]] = [reordered[swapWith], reordered[idx]];
+    const newOrder = reordered.map((s, index) => ({
       section_key: s.section_key,
       display_order: index + 1,
     }));
-
     setSections((prev) => prev.map((s) => {
       const found = newOrder.find((o) => o.section_key === s.section_key);
       return found ? { ...s, display_order: found.display_order } : s;
     }));
-
-    try {
-      await reorderSections(newOrder, supabase);
-    } catch (e: any) {
-      setSaveMsg(key, { type: 'error', text: e.message });
-      await loadAll();
-    }
+    try { await reorderSections(newOrder, supabase); } catch (e: any) { setSaveMsg(key, { type: 'error', text: e.message }); }
   }
 
   function handleHeroFile(e: ChangeEvent<HTMLInputElement>) {
