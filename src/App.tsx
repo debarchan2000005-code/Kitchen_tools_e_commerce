@@ -46,11 +46,6 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* Everything under /admin/* is nested inside AdminAuthLayout, which
-            mounts AdminAuthProvider scoped to just this subtree. That
-            provider talks only to the admin Supabase client, so nothing
-            here can ever read or change the customer/guest session that
-            lives inside the separate <Layout /> subtree below. */}
         <Route element={<AdminAuthLayout />}>
           <Route path="/admin/login" element={<LoginPage />} />
           <Route
