@@ -99,12 +99,12 @@ export function HomepagePage() {
   async function loadAll() {
     setLoading(true);
     const [sectionRows, featureRows, { data: cats }, picks, { data: prods }, fp, bp, { data: heroData }] = await Promise.all([
-      getHomepageSections(), getHomepageFeatures(),
+      getHomepageSections(supabase), getHomepageFeatures(supabase),
       supabase.from('categories').select('*').order('name'),
-      getHomepageCategoryPicks(),
+      getHomepageCategoryPicks(supabase),
       supabase.from('products').select('id,name').order('name'),
-      getHomepageProductPicks('featured_products'),
-      getHomepageProductPicks('best_sellers'),
+      getHomepageProductPicks('featured_products', supabase),
+      getHomepageProductPicks('best_sellers', supabase),
       supabase.from('homepage_hero').select('*').eq('id', 1).maybeSingle(),
     ]);
     setSections(sectionRows);
@@ -131,21 +131,33 @@ export function HomepagePage() {
 
   async function toggleEnabled(key: string, v: boolean) {
     setSections((prev) => prev.map((s) => (s.section_key === key ? { ...s, is_enabled: v } : s)));
-    try { await updateHomepageSection(key, { is_enabled: v }); } catch (e: any) { setSaveMsg(key, { type: 'error', text: e.message }); }
+    try { await updateHomepageSection(key, { is_enabled: v }, supabase); } catch (e: any) { setSaveMsg(key, { type: 'error', text: e.message }); }
   }
 
   async function moveSection(key: string, dir: 'up' | 'down') {
     const ordered = [...sections].sort((a, b) => a.display_order - b.display_order);
     const idx = ordered.findIndex((s) => s.section_key === key);
-    const swapWith = dir === 'up' ? idx - 1 : idx + 1;
-    if (swapWith < 0 || swapWith >= ordered.length) return;
-    const a = ordered[idx], b = ordered[swapWith];
-    const newOrder = [{ section_key: a.section_key, display_order: b.display_order }, { section_key: b.section_key, display_order: a.display_order }];
+    const target = dir === 'up' ? idx - 1 : idx + 1;
+    if (idx < 0 || target < 0 || target >= ordered.length) return;
+
+    const next = [...ordered];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    const newOrder = next.map((s, index) => ({
+      section_key: s.section_key,
+      display_order: index + 1,
+    }));
+
     setSections((prev) => prev.map((s) => {
       const found = newOrder.find((o) => o.section_key === s.section_key);
       return found ? { ...s, display_order: found.display_order } : s;
     }));
-    try { await reorderSections(newOrder); } catch (e: any) { setSaveMsg(key, { type: 'error', text: e.message }); }
+
+    try {
+      await reorderSections(newOrder, supabase);
+    } catch (e: any) {
+      setSaveMsg(key, { type: 'error', text: e.message });
+      await loadAll();
+    }
   }
 
   function handleHeroFile(e: ChangeEvent<HTMLInputElement>) {
@@ -158,7 +170,7 @@ export function HomepagePage() {
     setSaving((s) => ({ ...s, hero: true }));
     try {
       let image_url = hero.image_url || '';
-      if (heroFile) image_url = await uploadHomepageImage(heroFile, 'hero');
+      if (heroFile) image_url = await uploadHomepageImage(heroFile, 'hero', supabase);
       const payload = { id: 1, ...hero, image_url, updated_at: new Date().toISOString() };
       const { error } = await supabase.from('homepage_hero').upsert(payload);
       if (error) throw error;
@@ -185,9 +197,9 @@ export function HomepagePage() {
       for (const f of features) {
         const { id, ...rest } = f;
         if (id.startsWith('new-')) {
-          await upsertHomepageFeature(rest);
+          await upsertHomepageFeature(rest, supabase);
         } else {
-          await upsertHomepageFeature(f);
+          await upsertHomepageFeature(f, supabase);
         }
       }
       await loadAll();
@@ -200,13 +212,13 @@ export function HomepagePage() {
   }
   async function removeFeature(id: string) {
     if (id.startsWith('new-')) { setFeatures((prev) => prev.filter((f) => f.id !== id)); return; }
-    try { await deleteHomepageFeature(id); setFeatures((prev) => prev.filter((f) => f.id !== id)); } catch (e: any) { setSaveMsg('features', { type: 'error', text: e.message }); }
+    try { await deleteHomepageFeature(id, supabase); setFeatures((prev) => prev.filter((f) => f.id !== id)); } catch (e: any) { setSaveMsg('features', { type: 'error', text: e.message }); }
   }
 
   async function saveCategoriesSection(title: string, subtitle: string) {
     setSaving((s) => ({ ...s, categories: true }));
     try {
-      await updateHomepageSection('categories', { title, subtitle });
+      await updateHomepageSection('categories', { title, subtitle }, supabase);
       const enabledPicks = catPicks.filter((p) => p.is_enabled);
 
 const toSave = enabledPicks.map((p, index) => ({
@@ -217,7 +229,7 @@ const toSave = enabledPicks.map((p, index) => ({
 }));
 
 if (toSave.length) {
-  await setHomepageCategoryPicks(toSave);
+  await setHomepageCategoryPicks(toSave, supabase);
 }
       await loadAll();
       setSaveMsg('categories', { type: 'success', text: 'Categories section saved.' });
@@ -247,7 +259,7 @@ if (toSave.length) {
     setSaving((s) => ({ ...s, [sectionKey]: true }));
     try {
       const sec = section(sectionKey);
-      await updateHomepageSection(sectionKey, { title: patch.title, subtitle: patch.subtitle, content: { ...sec?.content, ...patch.content } });
+      await updateHomepageSection(sectionKey, { title: patch.title, subtitle: patch.subtitle, content: { ...sec?.content, ...patch.content } }, supabase);
       const picks = sectionKey === 'featured_products' ? featuredPicks : bestsellerPicks;
       const enabledPicks = picks.filter((p) => p.is_enabled);
       const toSave = enabledPicks.map((p, index) => ({
@@ -258,7 +270,7 @@ if (toSave.length) {
       }));
 
       if (toSave.length) {
-        await setHomepageProductPicks(toSave);
+        await setHomepageProductPicks(toSave, supabase);
       }
       await loadAll();
       setSaveMsg(sectionKey, { type: 'success', text: 'Section saved.' });
@@ -280,7 +292,7 @@ if (toSave.length) {
     setSaving((s) => ({ ...s, [key]: true }));
     try {
       const sec = section(key);
-      await updateHomepageSection(key, { ...patch, content: { ...sec?.content, ...patch.content } });
+      await updateHomepageSection(key, { ...patch, content: { ...sec?.content, ...patch.content } }, supabase);
       await loadAll();
       setSaveMsg(key, { type: 'success', text: 'Section saved.' });
     } catch (e: any) {
@@ -492,7 +504,7 @@ if (toSave.length) {
                     let content: any = { display_mode, count, view_all_text, view_all_link };
                     if (!isFeatured) {
                       let image_url = sec?.content?.image_url || '';
-                      if (bsFile) image_url = await uploadHomepageImage(bsFile, 'bestsellers');
+                      if (bsFile) image_url = await uploadHomepageImage(bsFile, 'bestsellers', supabase);
                       content.image_url = image_url;
                       setBsFile(null);
                     }
