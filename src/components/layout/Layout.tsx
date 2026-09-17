@@ -1,16 +1,25 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
+import { useLayoutEffect } from 'react';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
 import { CustomerAuthProvider } from '../../contexts/CustomerAuthContext';
 import { CartProvider } from '../../contexts/CartContext';
 import { WishlistProvider } from '../../contexts/WishlistContext';
 
-// This layout - and everything nested under it in the router - is the
-// entire customer-facing site. CustomerAuthProvider is scoped to exactly
-// this subtree, so it is the only thing that manages the customer/guest
-// Supabase session. CartProvider/WishlistProvider read from it, not from
-// admin state, and none of them are mounted anywhere under /admin.
 export function Layout() {
+  const { pathname, search } = useLocation();
+  useLayoutEffect(() => {
+    window.history.scrollRestoration = 'manual';
+
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement) {
+      scrollingElement.scrollTop = 0;
+      scrollingElement.scrollLeft = 0;
+    }
+
+    window.scrollTo(0, 0);
+  }, [pathname, search]);
+
   return (
     <CustomerAuthProvider>
       <CartProvider>
